@@ -27,11 +27,11 @@ export TIMEOUT_COMMIT=${TIMEOUT_COMMIT:-"5s"}
 
 alias BINARY="$BINARY --home=$HOME_DIR"
 
+command -v $BINARY > /dev/null 2>&1 || { echo >&2 "$BINARY command not found. Ensure this is setup / properly installed in your GOPATH."; exit 1; }
+command -v jq > /dev/null 2>&1 || { echo >&2 "jq not installed. More info: https://stedolan.github.io/jq/download/"; exit 1; }
+
 BINARY config keyring-backend $KEYRING
 BINARY config chain-id $CHAIN_ID
-
-command -v BINARY > /dev/null 2>&1 || { echo >&2 "junod command not found. Ensure this is setup / properly installed in your GOPATH."; exit 1; }
-command -v jq > /dev/null 2>&1 || { echo >&2 "jq not installed. More info: https://stedolan.github.io/jq/download/"; exit 1; }
 
 from_scratch () {
   # Fresh install on current branch
@@ -73,7 +73,7 @@ from_scratch () {
   # Collect genesis tx
   BINARY genesis collect-gentxs
 
-  # Run this to ensure junorything worked and that the genesis file is setup correctly
+  # Run this to ensure everything worked and that the genesis file is setup correctly
   BINARY genesis validate-genesis
 }
 
