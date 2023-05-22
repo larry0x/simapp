@@ -39,8 +39,6 @@ import (
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/x/auth/vesting"
-	vestingtypes "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -104,7 +102,6 @@ var (
 		crisis.AppModuleBasic{},
 		slashing.AppModuleBasic{},
 		evidence.AppModuleBasic{},
-		vesting.AppModuleBasic{},
 		consensus.AppModuleBasic{},
 	)
 
@@ -335,7 +332,6 @@ func NewSimApp(
 			encodingConfig.TxConfig,
 		),
 		auth.NewAppModule(appCodec, app.AccountKeeper, authsims.RandomGenesisAccounts, app.GetSubspace(authtypes.ModuleName)),
-		vesting.NewAppModule(app.AccountKeeper, app.BankKeeper),
 		bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, app.GetSubspace(banktypes.ModuleName)),
 		capability.NewAppModule(appCodec, *app.CapabilityKeeper, false),
 		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
@@ -357,14 +353,14 @@ func NewSimApp(
 		capabilitytypes.ModuleName, distrtypes.ModuleName, slashingtypes.ModuleName,
 		evidencetypes.ModuleName, stakingtypes.ModuleName,
 		authtypes.ModuleName, banktypes.ModuleName, govtypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName,
-		paramstypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
+		paramstypes.ModuleName, consensusparamtypes.ModuleName,
 	)
 	app.ModuleManager.SetOrderEndBlockers(
 		crisistypes.ModuleName, govtypes.ModuleName, stakingtypes.ModuleName,
 		capabilitytypes.ModuleName, authtypes.ModuleName, banktypes.ModuleName, distrtypes.ModuleName,
 		slashingtypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName,
-		paramstypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
+		paramstypes.ModuleName, consensusparamtypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -378,7 +374,7 @@ func NewSimApp(
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName,
 		paramstypes.ModuleName,
-		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
+		consensusparamtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
