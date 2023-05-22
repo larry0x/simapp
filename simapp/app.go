@@ -2,7 +2,6 @@ package simapp
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -118,9 +117,6 @@ type SimApp struct {
 
 	// the module manager
 	ModuleManager *module.Manager
-
-	// simulation manager
-	sm *module.SimulationManager
 
 	// module configurator
 	configurator module.Configurator
@@ -290,17 +286,6 @@ func NewSimApp(
 	// add test gRPC service for testing gRPC queries in isolation
 	testdata_pulsar.RegisterQueryServer(app.GRPCQueryRouter(), testdata_pulsar.QueryImpl{})
 
-	// create the simulation manager and define the order of the modules for deterministic simulations
-	//
-	// NOTE: this is not required apps that don't use the simulator for fuzz testing
-	// transactions
-	overrideModules := map[string]module.AppModuleSimulation{
-		authtypes.ModuleName: auth.NewAppModule(app.appCodec, app.AccountKeeper, authsims.RandomGenesisAccounts, nil),
-	}
-	app.sm = module.NewSimulationManagerFromAppModules(app.ModuleManager.Modules, overrideModules)
-
-	app.sm.RegisterStoreDecoders()
-
 	// initialize stores
 	app.MountKVStores(keys)
 	app.MountTransientStores(tkeys)
@@ -402,7 +387,7 @@ func (app *SimApp) LoadHeight(height int64) error {
 }
 
 func (app *SimApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllowedAddrs []string, modulesToExport []string) (servertypes.ExportedApp, error) {
-	return servertypes.ExportedApp{}, errors.New("UNIMPLEMENTED")
+	panic("UNIMPLEMENTED")
 }
 
 // LegacyAmino returns SimApp's amino codec.
@@ -459,7 +444,7 @@ func (app *SimApp) GetMemKey(storeKey string) *storetypes.MemoryStoreKey {
 
 // SimulationManager implements the SimulationApp interface
 func (app *SimApp) SimulationManager() *module.SimulationManager {
-	return app.sm
+	panic("UNIMPLEMENTED")
 }
 
 // RegisterAPIRoutes registers all application module routes with the provided
