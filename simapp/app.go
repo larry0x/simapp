@@ -2,16 +2,22 @@ package simapp
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/cast"
+
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
+	tmos "github.com/cometbft/cometbft/libs/os"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	nodeservice "github.com/cosmos/cosmos-sdk/client/grpc/node"
 	"github.com/cosmos/cosmos-sdk/client/grpc/tmservice"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -44,6 +50,10 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/CosmWasm/wasmd/x/wasm"
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
 const (
@@ -70,12 +80,14 @@ var (
 		bank.AppModuleBasic{},
 		staking.AppModuleBasic{},
 		consensus.AppModuleBasic{},
+		wasm.AppModuleBasic{},
 	)
 
 	maccPerms = map[string][]string{
 		authtypes.FeeCollectorName:     nil,
 		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
 		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
+		wasm.ModuleName:                {authtypes.Burner},
 	}
 )
 
@@ -100,6 +112,7 @@ type SimApp struct {
 	BankKeeper            bankkeeper.Keeper
 	StakingKeeper         *stakingkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
+	WasmKeeper            wasm.Keeper
 
 	ModuleManager *module.Manager
 	configurator  module.Configurator
@@ -120,6 +133,7 @@ func NewSimApp(
 	traceStore io.Writer,
 	loadLatest bool,
 	appOpts servertypes.AppOptions,
+	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *SimApp {
 	encCfg := MakeEncodingConfig()
@@ -142,6 +156,7 @@ func NewSimApp(
 		banktypes.StoreKey,
 		stakingtypes.StoreKey,
 		consensusparamtypes.StoreKey,
+		wasm.StoreKey,
 	)
 	tkeys := sdk.NewTransientStoreKeys()
 	memKeys := sdk.NewMemoryStoreKeys()
@@ -156,6 +171,13 @@ func NewSimApp(
 		tkeys:             tkeys,
 		memKeys:           memKeys,
 	}
+
+	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
+		app.cdc,
+		keys[consensusparamtypes.StoreKey],
+		authority,
+	)
+	app.SetParamStore(&app.ConsensusParamsKeeper)
 
 	app.AccountKeeper = authkeeper.NewAccountKeeper(
 		app.cdc,
@@ -182,12 +204,27 @@ func NewSimApp(
 		authority,
 	)
 
-	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
+	wasmDir, wasmCfg, wasmCapabilities := wasmParams(appOpts)
+	app.WasmKeeper = wasm.NewKeeper(
 		app.cdc,
-		keys[consensusparamtypes.StoreKey],
+		keys[wasm.StoreKey],
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.StakingKeeper,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		app.MsgServiceRouter(),
+		app.GRPCQueryRouter(),
+		wasmDir,
+		wasmCfg,
+		wasmCapabilities,
 		authority,
+		wasmOpts...,
 	)
-	bApp.SetParamStore(&app.ConsensusParamsKeeper)
 
 	app.ModuleManager = module.NewManager(
 		genutil.NewAppModule(app.AccountKeeper, app.StakingKeeper, app.BaseApp.DeliverTx, encCfg.TxConfig),
@@ -195,6 +232,7 @@ func NewSimApp(
 		bank.NewAppModule(app.cdc, app.BankKeeper, app.AccountKeeper, nil),
 		staking.NewAppModule(app.cdc, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, nil),
 		consensus.NewAppModule(app.cdc, app.ConsensusParamsKeeper),
+		wasm.NewAppModule(app.cdc, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), nil),
 	)
 
 	app.ModuleManager.SetOrderBeginBlockers(
@@ -203,6 +241,7 @@ func NewSimApp(
 		banktypes.ModuleName,
 		genutiltypes.ModuleName,
 		consensusparamtypes.ModuleName,
+		wasm.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
@@ -211,6 +250,7 @@ func NewSimApp(
 		banktypes.ModuleName,
 		genutiltypes.ModuleName,
 		consensusparamtypes.ModuleName,
+		wasm.ModuleName,
 	)
 
 	genesisModuleOrder := []string{
@@ -219,6 +259,7 @@ func NewSimApp(
 		stakingtypes.ModuleName,
 		genutiltypes.ModuleName,
 		consensusparamtypes.ModuleName,
+		wasm.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
 	app.ModuleManager.SetOrderExportGenesis(genesisModuleOrder...)
@@ -234,26 +275,43 @@ func NewSimApp(
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
 
-	app.setAnteHandler(encCfg.TxConfig)
+	app.setAnteHandler(encCfg.TxConfig, wasmCfg, keys[wasm.StoreKey])
 	app.setPostHandler()
+
+	if manager := app.SnapshotManager(); manager != nil {
+		if err := manager.RegisterExtensions(
+			wasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmKeeper),
+		); err != nil {
+			panic(fmt.Errorf("failed to register snapshot extension: %s", err))
+		}
+	}
 
 	if loadLatest {
 		if err := app.LoadLatestVersion(); err != nil {
 			logger.Error("error on loading last version", "err", err)
 			os.Exit(1)
 		}
+
+		ctx := app.BaseApp.NewUncachedContext(true, tmproto.Header{})
+		if err := app.WasmKeeper.InitializePinnedCodes(ctx); err != nil {
+			tmos.Exit(fmt.Sprintf("failed initialize pinned codes %s", err))
+		}
 	}
 
 	return app
 }
 
-func (app *SimApp) setAnteHandler(txConfig client.TxConfig) {
-	anteHandler, err := ante.NewAnteHandler(
-		ante.HandlerOptions{
-			AccountKeeper:   app.AccountKeeper,
-			BankKeeper:      app.BankKeeper,
-			SignModeHandler: txConfig.SignModeHandler(),
-			SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+func (app *SimApp) setAnteHandler(txCfg client.TxConfig, wasmCfg wasmtypes.WasmConfig, txCounterStoreKey storetypes.StoreKey) {
+	anteHandler, err := NewAnteHandler(
+		HandlerOptions{
+			HandlerOptions: ante.HandlerOptions{
+				AccountKeeper:   app.AccountKeeper,
+				BankKeeper:      app.BankKeeper,
+				SignModeHandler: txCfg.SignModeHandler(),
+				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+			},
+			WasmCfg:           &wasmCfg,
+			TXCounterStoreKey: txCounterStoreKey,
 		},
 	)
 	if err != nil {
@@ -384,4 +442,21 @@ func blockedAddresses() map[string]bool {
 	}
 
 	return modAccAddrs
+}
+
+func wasmParams(appOpts servertypes.AppOptions) (string, wasmtypes.WasmConfig, string) {
+	// dir
+	homePath := cast.ToString(appOpts.Get(flags.FlagHome))
+	wasmDir := filepath.Join(homePath, "wasm")
+
+	// config
+	wasmCfg, err := wasm.ReadWasmConfig(appOpts)
+	if err != nil {
+		panic(fmt.Sprintf("error while reading wasm config: %s", err))
+	}
+
+	// capabilities
+	wasmCapabilities := "iterator,staking,stargate,cosmwasm_1_1,cosmwasm_1_2"
+
+	return wasmDir, wasmCfg, wasmCapabilities
 }

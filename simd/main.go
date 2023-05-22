@@ -25,6 +25,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 
+	"github.com/CosmWasm/wasmd/x/wasm"
+
 	"github.com/larry0x/simapp/simapp"
 )
 
@@ -229,6 +231,7 @@ func createApp(
 	return simapp.NewSimApp(
 		logger, db, traceStore, true,
 		appOpts,
+		[]wasm.Option{},
 		server.DefaultBaseappOptions(appOpts)...,
 	)
 }
