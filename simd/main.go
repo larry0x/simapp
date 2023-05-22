@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"io"
 	"os"
 
@@ -10,12 +9,10 @@ import (
 
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/client/debug"
-	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/pruning"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
@@ -23,46 +20,40 @@ import (
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
-	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/cosmos/cosmos-sdk/x/crisis"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 
 	"github.com/larry0x/simapp/simapp"
 )
 
+func init() {
+	cfg := sdk.GetConfig()
+	cfg.Seal()
+}
+
 func main() {
 	rootCmd := NewRootCmd()
+
 	if err := svrcmd.Execute(rootCmd, "", simapp.DefaultNodeHome); err != nil {
 		switch e := err.(type) {
 		case server.ErrorCode:
 			os.Exit(e.Code)
-
 		default:
 			os.Exit(1)
 		}
 	}
 }
 
-// NewRootCmd creates a new root command for simd. It is called once in the
-// main function.
 func NewRootCmd() *cobra.Command {
-	// we "pre"-instantiate the application for getting the injected/configured encoding configuration
-	tempApp := simapp.NewSimApp(log.NewNopLogger(), dbm.NewMemDB(), nil, true, simtestutil.NewAppOptionsWithFlagHome(simapp.DefaultNodeHome))
-	encodingConfig := simapp.EncodingConfig{
-		InterfaceRegistry: tempApp.InterfaceRegistry(),
-		Codec:             tempApp.Codec(),
-		TxConfig:          tempApp.TxConfig(),
-		Amino:             tempApp.LegacyAmino(),
-	}
+	encCfg := simapp.MakeEncodingConfig()
 
 	initClientCtx := client.Context{}.
-		WithCodec(encodingConfig.Codec).
-		WithInterfaceRegistry(encodingConfig.InterfaceRegistry).
-		WithTxConfig(encodingConfig.TxConfig).
-		WithLegacyAmino(encodingConfig.Amino).
+		WithCodec(encCfg.Codec).
+		WithInterfaceRegistry(encCfg.InterfaceRegistry).
+		WithTxConfig(encCfg.TxConfig).
+		WithLegacyAmino(encCfg.Amino).
 		WithInput(os.Stdin).
 		WithAccountRetriever(types.AccountRetriever{}).
 		WithHomeDir(simapp.DefaultNodeHome).
@@ -70,9 +61,8 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd := &cobra.Command{
 		Use:   "simd",
-		Short: "simulation app",
+		Short: "Simulation app",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			// set the default command outputs
 			cmd.SetOut(cmd.OutOrStdout())
 			cmd.SetErr(cmd.ErrOrStderr())
 
@@ -97,35 +87,37 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	initRootCmd(rootCmd, encodingConfig)
+	server.AddCommands(
+		rootCmd,
+		simapp.DefaultNodeHome,
+		createApp,
+		exportApp,
+		func(*cobra.Command) {},
+	)
+
+	rootCmd.AddCommand(
+		genesisCommand(encCfg),
+		queryCommand(),
+		txCommand(),
+		config.Cmd(),
+		debug.Cmd(),
+		genutilcli.InitCmd(simapp.ModuleBasics, simapp.DefaultNodeHome),
+		keys.Commands(simapp.DefaultNodeHome),
+		pruning.PruningCmd(createApp),
+		rpc.StatusCommand(),
+	)
 
 	return rootCmd
 }
 
-// initTendermintConfig helps to override default Tendermint Config values.
-// return tmcfg.DefaultConfig if no custom configuration is required for the application.
 func initTendermintConfig() *tmcfg.Config {
-	cfg := tmcfg.DefaultConfig()
-
-	// these values put a higher strain on node memory
-	// cfg.P2P.MaxNumInboundPeers = 100
-	// cfg.P2P.MaxNumOutboundPeers = 40
-
-	return cfg
+	return tmcfg.DefaultConfig()
 }
 
-// initAppConfig helps to override default appConfig template and configs.
-// return "", nil if no custom configuration is required for the application.
 func initAppConfig() (string, interface{}) {
-	// The following code snippet is just for reference.
-
-	// WASMConfig defines configuration for the wasm module.
 	type WASMConfig struct {
-		// This is the maximum sdk gas (wasm and storage) that we allow for any x/wasm "smart" queries
 		QueryGasLimit uint64 `mapstructure:"query_gas_limit"`
-
-		// Address defines the gRPC-web server to listen on
-		LruSize uint64 `mapstructure:"lru_size"`
+		LruSize       uint64 `mapstructure:"lru_size"`
 	}
 
 	type CustomAppConfig struct {
@@ -134,8 +126,6 @@ func initAppConfig() (string, interface{}) {
 		WASM WASMConfig `mapstructure:"wasm"`
 	}
 
-	// Optionally allow the chain developer to overwrite the SDK's default
-	// server config.
 	srvCfg := serverconfig.DefaultConfig()
 	// The SDK's default minimum gas price is set to "" (empty value) inside
 	// app.toml. If left empty by validators, the node will halt on startup.
@@ -149,8 +139,7 @@ func initAppConfig() (string, interface{}) {
 	//   own app.toml to override, or use this default value.
 	//
 	// In simapp, we set the min gas prices to 0.
-	srvCfg.MinGasPrices = "0stake"
-	// srvCfg.BaseConfig.IAVLDisableFastNode = true // disable fastnode by default
+	srvCfg.MinGasPrices = "0utoken"
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
@@ -171,40 +160,17 @@ lru_size = 0`
 	return customAppTemplate, customAppConfig
 }
 
-func initRootCmd(rootCmd *cobra.Command, encodingConfig simapp.EncodingConfig) {
-	cfg := sdk.GetConfig()
-	cfg.Seal()
-
-	rootCmd.AddCommand(
-		genutilcli.InitCmd(simapp.ModuleBasics, simapp.DefaultNodeHome),
-		debug.Cmd(),
-		config.Cmd(),
-		pruning.PruningCmd(newApp),
+func genesisCommand(encCfg simapp.EncodingConfig, cmds ...*cobra.Command) *cobra.Command {
+	cmd := genutilcli.GenesisCoreCommand(
+		encCfg.TxConfig,
+		simapp.ModuleBasics,
+		simapp.DefaultNodeHome,
 	)
 
-	server.AddCommands(rootCmd, simapp.DefaultNodeHome, newApp, appExport, addModuleInitFlags)
-
-	// add keybase, auxiliary RPC, query, genesis, and tx child commands
-	rootCmd.AddCommand(
-		rpc.StatusCommand(),
-		genesisCommand(encodingConfig),
-		queryCommand(),
-		txCommand(),
-		keys.Commands(simapp.DefaultNodeHome),
-	)
-}
-
-func addModuleInitFlags(startCmd *cobra.Command) {
-	crisis.AddModuleInitFlags(startCmd)
-}
-
-// genesisCommand builds genesis-related `simd genesis` command. Users may provide application specific commands as a parameter
-func genesisCommand(encodingConfig simapp.EncodingConfig, cmds ...*cobra.Command) *cobra.Command {
-	cmd := genutilcli.GenesisCoreCommand(encodingConfig.TxConfig, simapp.ModuleBasics, simapp.DefaultNodeHome)
-
-	for _, sub_cmd := range cmds {
-		cmd.AddCommand(sub_cmd)
+	for _, subcmd := range cmds {
+		cmd.AddCommand(subcmd)
 	}
+
 	return cmd
 }
 
@@ -257,61 +223,19 @@ func txCommand() *cobra.Command {
 	return cmd
 }
 
-// newApp creates the application
-func newApp(
-	logger log.Logger,
-	db dbm.DB,
-	traceStore io.Writer,
-	appOpts servertypes.AppOptions,
+func createApp(
+	logger log.Logger, db dbm.DB, traceStore io.Writer, appOpts servertypes.AppOptions,
 ) servertypes.Application {
-
-	baseappOptions := server.DefaultBaseappOptions(appOpts)
-
 	return simapp.NewSimApp(
 		logger, db, traceStore, true,
 		appOpts,
-		baseappOptions...,
+		server.DefaultBaseappOptions(appOpts)...,
 	)
 }
 
-// appExport creates a new simapp (optionally at a given height) and exports state.
-func appExport(
-	logger log.Logger,
-	db dbm.DB,
-	traceStore io.Writer,
-	height int64,
-	forZeroHeight bool,
-	jailAllowedAddrs []string,
-	appOpts servertypes.AppOptions,
-	modulesToExport []string,
+func exportApp(
+	logger log.Logger, db dbm.DB, traceStore io.Writer, height int64, forZeroHeight bool,
+	jailAllowedAddrs []string, appOpts servertypes.AppOptions, modulesToExport []string,
 ) (servertypes.ExportedApp, error) {
-	var simApp *simapp.SimApp
-
-	// this check is necessary as we use the flag in x/upgrade.
-	// we can exit more gracefully by checking the flag here.
-	homePath, ok := appOpts.Get(flags.FlagHome).(string)
-	if !ok || homePath == "" {
-		return servertypes.ExportedApp{}, errors.New("application home not set")
-	}
-
-	viperAppOpts, ok := appOpts.(*viper.Viper)
-	if !ok {
-		return servertypes.ExportedApp{}, errors.New("appOpts is not viper.Viper")
-	}
-
-	// overwrite the FlagInvCheckPeriod
-	viperAppOpts.Set(server.FlagInvCheckPeriod, 1)
-	appOpts = viperAppOpts
-
-	if height != -1 {
-		simApp = simapp.NewSimApp(logger, db, traceStore, false, appOpts)
-
-		if err := simApp.LoadHeight(height); err != nil {
-			return servertypes.ExportedApp{}, err
-		}
-	} else {
-		simApp = simapp.NewSimApp(logger, db, traceStore, true, appOpts)
-	}
-
-	return simApp.ExportAppStateAndValidators(forZeroHeight, jailAllowedAddrs, modulesToExport)
+	panic("UNIMPLEMENTED")
 }
