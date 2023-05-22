@@ -11,7 +11,6 @@ import (
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
-	"github.com/spf13/cast"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -45,9 +44,6 @@ import (
 	consensus "github.com/cosmos/cosmos-sdk/x/consensus"
 	consensusparamkeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
 	consensusparamtypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
-	"github.com/cosmos/cosmos-sdk/x/crisis"
-	crisiskeeper "github.com/cosmos/cosmos-sdk/x/crisis/keeper"
-	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
@@ -96,7 +92,6 @@ var (
 		staking.AppModuleBasic{},
 		distr.AppModuleBasic{},
 		params.AppModuleBasic{},
-		crisis.AppModuleBasic{},
 		slashing.AppModuleBasic{},
 		evidence.AppModuleBasic{},
 		consensus.AppModuleBasic{},
@@ -137,7 +132,6 @@ type SimApp struct {
 	StakingKeeper         *stakingkeeper.Keeper
 	SlashingKeeper        slashingkeeper.Keeper
 	DistrKeeper           distrkeeper.Keeper
-	CrisisKeeper          *crisiskeeper.Keeper
 	ParamsKeeper          paramskeeper.Keeper
 	EvidenceKeeper        evidencekeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
@@ -210,7 +204,7 @@ func NewSimApp(
 	bApp.SetTxEncoder(txConfig.TxEncoder())
 
 	keys := sdk.NewKVStoreKeys(
-		authtypes.StoreKey, banktypes.StoreKey, stakingtypes.StoreKey, crisistypes.StoreKey,
+		authtypes.StoreKey, banktypes.StoreKey, stakingtypes.StoreKey,
 		distrtypes.StoreKey, slashingtypes.StoreKey,
 		paramstypes.StoreKey, consensusparamtypes.StoreKey,
 		evidencetypes.StoreKey,
@@ -262,10 +256,6 @@ func NewSimApp(
 		appCodec, legacyAmino, keys[slashingtypes.StoreKey], app.StakingKeeper, authority,
 	)
 
-	invCheckPeriod := cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod))
-	app.CrisisKeeper = crisiskeeper.NewKeeper(appCodec, keys[crisistypes.StoreKey], invCheckPeriod,
-		app.BankKeeper, authtypes.FeeCollectorName, authority)
-
 	// register the staking hooks
 	// NOTE: stakingKeeper above is passed by reference, so that it will contain these hooks
 	app.StakingKeeper.SetHooks(
@@ -281,10 +271,6 @@ func NewSimApp(
 
 	/****  Module Options ****/
 
-	// NOTE: we may consider parsing `appOpts` inside module constructors. For the moment
-	// we prefer to be more strict in what arguments the modules expect.
-	skipGenesisInvariants := cast.ToBool(appOpts.Get(crisis.FlagSkipGenesisInvariants))
-
 	// NOTE: Any module instantiated in the module manager that is later modified
 	// must be passed by reference here.
 	app.ModuleManager = module.NewManager(
@@ -294,7 +280,6 @@ func NewSimApp(
 		),
 		auth.NewAppModule(appCodec, app.AccountKeeper, authsims.RandomGenesisAccounts, app.GetSubspace(authtypes.ModuleName)),
 		bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper, app.GetSubspace(banktypes.ModuleName)),
-		crisis.NewAppModule(app.CrisisKeeper, skipGenesisInvariants, app.GetSubspace(crisistypes.ModuleName)),
 		slashing.NewAppModule(appCodec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.GetSubspace(slashingtypes.ModuleName)),
 		distr.NewAppModule(appCodec, app.DistrKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.GetSubspace(distrtypes.ModuleName)),
 		staking.NewAppModule(appCodec, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.GetSubspace(stakingtypes.ModuleName)),
@@ -311,11 +296,11 @@ func NewSimApp(
 	app.ModuleManager.SetOrderBeginBlockers(
 		distrtypes.ModuleName, slashingtypes.ModuleName,
 		evidencetypes.ModuleName, stakingtypes.ModuleName,
-		authtypes.ModuleName, banktypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName,
+		authtypes.ModuleName, banktypes.ModuleName, genutiltypes.ModuleName,
 		paramstypes.ModuleName, consensusparamtypes.ModuleName,
 	)
 	app.ModuleManager.SetOrderEndBlockers(
-		crisistypes.ModuleName, stakingtypes.ModuleName,
+		stakingtypes.ModuleName,
 		authtypes.ModuleName, banktypes.ModuleName, distrtypes.ModuleName,
 		slashingtypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName,
@@ -331,7 +316,7 @@ func NewSimApp(
 	genesisModuleOrder := []string{
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName,
-		crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName,
+		genutiltypes.ModuleName, evidencetypes.ModuleName,
 		paramstypes.ModuleName,
 		consensusparamtypes.ModuleName,
 	}
@@ -341,7 +326,6 @@ func NewSimApp(
 	// Uncomment if you want to set a custom migration order here.
 	// app.ModuleManager.SetOrderMigrations(custom order)
 
-	app.ModuleManager.RegisterInvariants(app.CrisisKeeper)
 	app.configurator = module.NewConfigurator(app.appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter())
 	app.ModuleManager.RegisterServices(app.configurator)
 
@@ -604,7 +588,6 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(stakingtypes.ModuleName)
 	paramsKeeper.Subspace(distrtypes.ModuleName)
 	paramsKeeper.Subspace(slashingtypes.ModuleName)
-	paramsKeeper.Subspace(crisistypes.ModuleName)
 
 	return paramsKeeper
 }
