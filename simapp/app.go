@@ -78,9 +78,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
-	"github.com/cosmos/cosmos-sdk/x/nft"
-	nftkeeper "github.com/cosmos/cosmos-sdk/x/nft/keeper"
-	nftmodule "github.com/cosmos/cosmos-sdk/x/nft/module"
 	"github.com/cosmos/cosmos-sdk/x/params"
 	paramsclient "github.com/cosmos/cosmos-sdk/x/params/client"
 	paramskeeper "github.com/cosmos/cosmos-sdk/x/params/keeper"
@@ -124,7 +121,6 @@ var (
 		authzmodule.AppModuleBasic{},
 		groupmodule.AppModuleBasic{},
 		vesting.AppModuleBasic{},
-		nftmodule.AppModuleBasic{},
 		consensus.AppModuleBasic{},
 	)
 
@@ -136,7 +132,6 @@ var (
 		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
 		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
 		govtypes.ModuleName:            {authtypes.Burner},
-		nft.ModuleName:                 nil,
 	}
 )
 
@@ -175,7 +170,6 @@ type SimApp struct {
 	EvidenceKeeper        evidencekeeper.Keeper
 	FeeGrantKeeper        feegrantkeeper.Keeper
 	GroupKeeper           groupkeeper.Keeper
-	NFTKeeper             nftkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 
 	// the module manager
@@ -250,7 +244,7 @@ func NewSimApp(
 		minttypes.StoreKey, distrtypes.StoreKey, slashingtypes.StoreKey,
 		govtypes.StoreKey, paramstypes.StoreKey, consensusparamtypes.StoreKey, feegrant.StoreKey,
 		evidencetypes.StoreKey, capabilitytypes.StoreKey,
-		authzkeeper.StoreKey, nftkeeper.StoreKey, group.StoreKey,
+		authzkeeper.StoreKey, group.StoreKey,
 	)
 
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -354,8 +348,6 @@ func NewSimApp(
 		),
 	)
 
-	app.NFTKeeper = nftkeeper.NewKeeper(keys[nftkeeper.StoreKey], appCodec, app.AccountKeeper, app.BankKeeper)
-
 	// create evidence keeper with router
 	evidenceKeeper := evidencekeeper.NewKeeper(
 		appCodec, keys[evidencetypes.StoreKey], app.StakingKeeper, app.SlashingKeeper,
@@ -391,7 +383,6 @@ func NewSimApp(
 		params.NewAppModule(app.ParamsKeeper),
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
 		groupmodule.NewAppModule(appCodec, app.GroupKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
-		nftmodule.NewAppModule(appCodec, app.NFTKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
 		consensus.NewAppModule(appCodec, app.ConsensusParamsKeeper),
 	)
 
@@ -404,7 +395,7 @@ func NewSimApp(
 		capabilitytypes.ModuleName, minttypes.ModuleName, distrtypes.ModuleName, slashingtypes.ModuleName,
 		evidencetypes.ModuleName, stakingtypes.ModuleName,
 		authtypes.ModuleName, banktypes.ModuleName, govtypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName,
-		authz.ModuleName, feegrant.ModuleName, nft.ModuleName, group.ModuleName,
+		authz.ModuleName, feegrant.ModuleName, group.ModuleName,
 		paramstypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 	)
 	app.ModuleManager.SetOrderEndBlockers(
@@ -412,7 +403,7 @@ func NewSimApp(
 		capabilitytypes.ModuleName, authtypes.ModuleName, banktypes.ModuleName, distrtypes.ModuleName,
 		slashingtypes.ModuleName, minttypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, nft.ModuleName, group.ModuleName,
+		feegrant.ModuleName, group.ModuleName,
 		paramstypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 	)
 
@@ -426,7 +417,7 @@ func NewSimApp(
 		capabilitytypes.ModuleName, authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, crisistypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, nft.ModuleName, group.ModuleName, paramstypes.ModuleName,
+		feegrant.ModuleName, group.ModuleName, paramstypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
