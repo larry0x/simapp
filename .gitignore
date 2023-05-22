@@ -1,0 +1,5 @@
+# golang build artifacts
+build/
+
+# macos
+.DS_Store
