@@ -79,12 +79,12 @@ endif
 
 install:
 	@echo "🤖 Installing simapp..."
-	go install -mod=readonly $(BUILD_FLAGS) ./simd
+	go install -mod=readonly $(BUILD_FLAGS) ./cmd/simd
 	@echo "✅ Completed installation!"
 
 build:
 	@echo "🤖 Building simapp..."
-	go build $(BUILD_FLAGS) -o $(BUILDDIR)/ ./simd
+	go build $(BUILD_FLAGS) -o $(BUILDDIR)/ ./cmd/simd
 	@echo "✅ Completed build!"
 
 ################################################################################

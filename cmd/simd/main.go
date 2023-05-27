@@ -25,7 +25,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 
-	"github.com/larry0x/simapp/simapp"
+	simapp "github.com/larry0x/simapp/app"
 )
 
 func init() {
