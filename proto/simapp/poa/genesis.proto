@@ -1,0 +1,11 @@
+syntax = "proto3";
+package poa;
+
+import "gogoproto/gogo.proto";
+import "tendermint/abci/types.proto";
+
+option go_package = "github.com/larry0x/simapp/x/poa/types";
+
+message GenesisState {
+  repeated tendermint.abci.ValidatorUpdate validators = 1 [(gogoproto.nullable) = false];
+}

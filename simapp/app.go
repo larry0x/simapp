@@ -39,11 +39,9 @@ import (
 	consensus "github.com/cosmos/cosmos-sdk/x/consensus"
 	consensusparamkeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
 	consensusparamtypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
-	"github.com/cosmos/cosmos-sdk/x/genutil"
-	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
-	"github.com/cosmos/cosmos-sdk/x/staking"
-	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
-	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+
+	"github.com/larry0x/simapp/x/poa"
+	poatypes "github.com/larry0x/simapp/x/poa/types"
 )
 
 const (
@@ -66,16 +64,13 @@ var (
 
 	ModuleBasics = module.NewBasicManager(
 		auth.AppModuleBasic{},
-		genutil.NewAppModuleBasic(genutiltypes.DefaultMessageValidator),
 		bank.AppModuleBasic{},
-		staking.AppModuleBasic{},
 		consensus.AppModuleBasic{},
+		poa.AppModuleBasic{},
 	)
 
 	maccPerms = map[string][]string{
-		authtypes.FeeCollectorName:     nil,
-		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
-		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
+		authtypes.FeeCollectorName: nil,
 	}
 )
 
@@ -98,7 +93,6 @@ type SimApp struct {
 
 	AccountKeeper         authkeeper.AccountKeeper
 	BankKeeper            bankkeeper.Keeper
-	StakingKeeper         *stakingkeeper.Keeper
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 
 	ModuleManager *module.Manager
@@ -140,7 +134,6 @@ func NewSimApp(
 	keys := sdk.NewKVStoreKeys(
 		authtypes.StoreKey,
 		banktypes.StoreKey,
-		stakingtypes.StoreKey,
 		consensusparamtypes.StoreKey,
 	)
 	tkeys := sdk.NewTransientStoreKeys()
@@ -174,14 +167,6 @@ func NewSimApp(
 		authority,
 	)
 
-	app.StakingKeeper = stakingkeeper.NewKeeper(
-		app.cdc,
-		keys[stakingtypes.StoreKey],
-		app.AccountKeeper,
-		app.BankKeeper,
-		authority,
-	)
-
 	app.ConsensusParamsKeeper = consensusparamkeeper.NewKeeper(
 		app.cdc,
 		keys[consensusparamtypes.StoreKey],
@@ -190,34 +175,30 @@ func NewSimApp(
 	bApp.SetParamStore(&app.ConsensusParamsKeeper)
 
 	app.ModuleManager = module.NewManager(
-		genutil.NewAppModule(app.AccountKeeper, app.StakingKeeper, app.BaseApp.DeliverTx, encCfg.TxConfig),
 		auth.NewAppModule(app.cdc, app.AccountKeeper, authsims.RandomGenesisAccounts, nil),
 		bank.NewAppModule(app.cdc, app.BankKeeper, app.AccountKeeper, nil),
-		staking.NewAppModule(app.cdc, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, nil),
 		consensus.NewAppModule(app.cdc, app.ConsensusParamsKeeper),
+		poa.NewAppModule(),
 	)
 
 	app.ModuleManager.SetOrderBeginBlockers(
-		stakingtypes.ModuleName,
+		poatypes.ModuleName,
 		authtypes.ModuleName,
 		banktypes.ModuleName,
-		genutiltypes.ModuleName,
 		consensusparamtypes.ModuleName,
 	)
 
 	app.ModuleManager.SetOrderEndBlockers(
-		stakingtypes.ModuleName,
+		poatypes.ModuleName,
 		authtypes.ModuleName,
 		banktypes.ModuleName,
-		genutiltypes.ModuleName,
 		consensusparamtypes.ModuleName,
 	)
 
 	genesisModuleOrder := []string{
 		authtypes.ModuleName,
 		banktypes.ModuleName,
-		stakingtypes.ModuleName,
-		genutiltypes.ModuleName,
+		poatypes.ModuleName,
 		consensusparamtypes.ModuleName,
 	}
 	app.ModuleManager.SetOrderInitGenesis(genesisModuleOrder...)
