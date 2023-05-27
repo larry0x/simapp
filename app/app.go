@@ -113,7 +113,7 @@ func NewSimApp(
 	db dbm.DB,
 	traceStore io.Writer,
 	loadLatest bool,
-	appOpts servertypes.AppOptions,
+	_ servertypes.AppOptions,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *SimApp {
 	encCfg := MakeEncodingConfig()
@@ -286,7 +286,7 @@ func (app *SimApp) LoadHeight(height int64) error {
 	return app.LoadVersion(height)
 }
 
-func (app *SimApp) ExportAppStateAndValidators(forZeroHeight bool, jailAllowedAddrs []string, modulesToExport []string) (servertypes.ExportedApp, error) {
+func (app *SimApp) ExportAppStateAndValidators(_ bool, _ []string, _ []string) (servertypes.ExportedApp, error) {
 	panic("UNIMPLEMENTED")
 }
 

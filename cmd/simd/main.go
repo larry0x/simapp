@@ -96,7 +96,7 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	rootCmd.AddCommand(
-		genesisCommand(encCfg),
+		genesisCommand(),
 		queryCommand(),
 		txCommand(),
 		config.Cmd(),
@@ -160,7 +160,7 @@ lru_size = 0`
 	return customAppTemplate, customAppConfig
 }
 
-func genesisCommand(encCfg simapp.EncodingConfig, cmds ...*cobra.Command) *cobra.Command {
+func genesisCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                        "genesis",
 		Short:                      "Application's genesis-related subcommands",
@@ -230,15 +230,18 @@ func createApp(
 	logger log.Logger, db dbm.DB, traceStore io.Writer, appOpts servertypes.AppOptions,
 ) servertypes.Application {
 	return simapp.NewSimApp(
-		logger, db, traceStore, true,
+		logger,
+		db,
+		traceStore,
+		true,
 		appOpts,
 		server.DefaultBaseappOptions(appOpts)...,
 	)
 }
 
 func exportApp(
-	logger log.Logger, db dbm.DB, traceStore io.Writer, height int64, forZeroHeight bool,
-	jailAllowedAddrs []string, appOpts servertypes.AppOptions, modulesToExport []string,
+	_ log.Logger, _ dbm.DB, _ io.Writer, _ int64, _ bool,
+	_ []string, _ servertypes.AppOptions, _ []string,
 ) (servertypes.ExportedApp, error) {
 	panic("UNIMPLEMENTED")
 }
